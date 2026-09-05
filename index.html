@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube 英語学習プレイヤー</title>
+  <title>YouTube 英語学習プレイヤー（デバッグ版）</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -49,13 +49,23 @@
       background: #000;
       border-radius: 8px;
       overflow: hidden;
+      margin-bottom: 10px;
     }
     #player {
       width: 100%;
       height: 100%;
     }
+    /* 状況を確認するためのデバッグ表示用 */
+    .debug-status {
+      font-size: 0.85rem;
+      color: #00ffcc;
+      background: #1a1a1a;
+      padding: 8px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      word-break: break-all;
+    }
     .subtitles {
-      margin-top: 15px;
       padding: 15px;
       background: #1e1e1e;
       border-radius: 8px;
@@ -79,17 +89,19 @@
       <button onclick="changeVideo()">再生</button>
     </div>
 
+    <!-- 状態確認用パネル -->
+    <div class="debug-status" id="debugStatus">ステータス: 読み込み中...</div>
+
     <div class="video-wrapper">
       <div id="player"></div>
     </div>
 
     <div class="subtitles">
-      <div class="en" id="enSub">動画を読み込んでいます...</div>
-      <div class="ja" id="jaSub">Please wait</div>
+      <div class="en" id="enSub">動画を待機中...</div>
+      <div class="ja" id="jaSub">Waiting for video</div>
     </div>
   </div>
 
-  <!-- YouTube Iframe APIの読み込み -->
   <script src="https://www.youtube.com/iframe_api"></script>
 
   <script>
@@ -97,41 +109,53 @@
     let timeCheckInterval;
     let currentVideoId = "M7lc1UVf-VE";
 
-    // 動画IDごとの字幕データ辞書
+    function setStatus(msg) {
+      const el = document.getElementById('debugStatus');
+      if (el) el.textContent = "ステータス: " + msg;
+      console.log(msg);
+    }
+
     const subtitlesDatabase = {
       "M7lc1UVf-VE": [
         { start: 0,   end: 4,   en: "Welcome to YouTube Developers.", ja: "YouTubeデベロッパーへようこそ。" },
         { start: 4,   end: 8,   en: "Today, we are going to talk about APIs.", ja: "今日はAPIについてお話します。" },
         { start: 8,   end: 12,  en: "Let's dive right into the code.", ja: "早速コードを見ていきましょう。" },
         { start: 12,  end: 20,  en: "You can build amazing applications easily.", ja: "素晴らしいアプリケーションを簡単に作ることができます。" }
-      ],
-      "dQw4w9WgXcQ": [
-        { start: 0,   end: 5,   en: "Never gonna give you up.", ja: "あなたを諦めない。" },
-        { start: 5,   end: 10,  en: "Never gonna let you down.", ja: "あなたを裏切らない。" },
-        { start: 10,  end: 15,  en: "Never gonna run around and desert you.", ja: "走り回ってあなたを捨てたりしない。" }
       ]
     };
 
-    // ① スマホや外部から確実に呼び出せるよう、windowオブジェクトに明示的に登録する
+    // YouTube APIの準備ができたときに呼ばれる
     window.onYouTubeIframeAPIReady = function() {
-      player = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
-        videoId: currentVideoId,
-        events: {
-          'onReady': onPlayerReady,
-          'onStateChange': onPlayerStateChange
-        }
-      });
+      setStatus("APIスクリプトの読み込み成功。プレイヤーを生成します...");
+      try {
+        player = new YT.Player('player', {
+          height: '100%',
+          width: '100%',
+          videoId: currentVideoId,
+          events: {
+            'onReady': onPlayerReady,
+            'onStateChange': onPlayerStateChange,
+            'onError': onPlayerError
+          }
+        });
+      } catch (e) {
+        setStatus("プレイヤー生成エラー: " + e.message);
+      }
     };
 
     function onPlayerReady(event) {
+      setStatus("プレイヤーの準備完了！再生ボタンを押してください。");
       document.getElementById('enSub').textContent = "再生ボタンを押してください";
-      document.getElementById('jaSub').textContent = "Press play to start subtitles";
+      document.getElementById('jaSub').textContent = "Press play";
+    }
+
+    function onPlayerError(event) {
+      setStatus("YouTube側エラーコード: " + event.data);
     }
 
     function onPlayerStateChange(event) {
       if (event.data === YT.PlayerState.PLAYING) {
+        setStatus("動画が再生中（PLAYING）");
         if (timeCheckInterval) clearInterval(timeCheckInterval);
         
         timeCheckInterval = setInterval(() => {
@@ -140,8 +164,11 @@
             updateSubtitles(currentTime);
           }
         }, 200);
-      } else {
+      } else if (event.data === YT.PlayerState.PAUSED) {
+        setStatus("動画が一時停止");
         if (timeCheckInterval) clearInterval(timeCheckInterval);
+      } else if (event.data === YT.PlayerState.BUFFERING) {
+        setStatus("動画を読み込み中（バッファリング）...");
       }
     }
 
@@ -156,12 +183,11 @@
         enSubEl.textContent = currentSub.en;
         jaSubEl.textContent = currentSub.ja;
       } else {
-        enSubEl.textContent = "";
+        enSubEl.textContent = `再生中 (${Math.floor(currentTime)}秒)`;
         jaSubEl.textContent = "";
       }
     }
 
-    // グローバルに関数を公開してHTML側から確実に叩けるようにする
     window.changeVideo = function() {
       const input = document.getElementById('urlInput').value.trim();
       let videoId = "";
@@ -183,14 +209,12 @@
 
       if (videoId && videoId.length >= 10) {
         currentVideoId = videoId;
+        setStatus("動画ID変更: " + videoId);
         if (player && typeof player.loadVideoById === 'function') {
           player.loadVideoById(videoId);
         }
-        
-        document.getElementById('enSub').textContent = "動画を切り替えました";
-        document.getElementById('jaSub').textContent = "（再生すると字幕が同期します）";
       } else {
-        alert("正しいYouTubeのURLまたは動画IDを入力してください。");
+        alert("正しいYouTubeのURLを入力してください。");
       }
     };
   </script>
