@@ -84,28 +84,27 @@
     </div>
 
     <div class="subtitles">
-      <div class="en" id="enSub">再生を押すと字幕が同期します</div>
-      <div class="ja" id="jaSub">Subtitles will appear here</div>
+      <div class="en" id="enSub">動画を読み込んでいます...</div>
+      <div class="ja" id="jaSub">Please wait</div>
     </div>
   </div>
 
+  <!-- YouTube Iframe APIの読み込み -->
   <script src="https://www.youtube.com/iframe_api"></script>
 
   <script>
     let player;
     let timeCheckInterval;
-    let currentVideoId = "M7lc1UVf-VE"; // 現在の動画IDを保持
+    let currentVideoId = "M7lc1UVf-VE";
 
-    // --- 動画IDごとの字幕データ辞書（ここに動画ごとのセリフを追加していく） ---
+    // 動画IDごとの字幕データ辞書
     const subtitlesDatabase = {
-      // 動画1: M7lc1UVf-VE 用のデータ
       "M7lc1UVf-VE": [
         { start: 0,   end: 4,   en: "Welcome to YouTube Developers.", ja: "YouTubeデベロッパーへようこそ。" },
         { start: 4,   end: 8,   en: "Today, we are going to talk about APIs.", ja: "今日はAPIについてお話します。" },
         { start: 8,   end: 12,  en: "Let's dive right into the code.", ja: "早速コードを見ていきましょう。" },
         { start: 12,  end: 20,  en: "You can build amazing applications easily.", ja: "素晴らしいアプリケーションを簡単に作ることができます。" }
       ],
-      // 動画2: 別の動画ID用（例として別のテスト用データを配置）
       "dQw4w9WgXcQ": [
         { start: 0,   end: 5,   en: "Never gonna give you up.", ja: "あなたを諦めない。" },
         { start: 5,   end: 10,  en: "Never gonna let you down.", ja: "あなたを裏切らない。" },
@@ -113,15 +112,22 @@
       ]
     };
 
-    function onYouTubeIframeAPIReady() {
+    // ① スマホや外部から確実に呼び出せるよう、windowオブジェクトに明示的に登録する
+    window.onYouTubeIframeAPIReady = function() {
       player = new YT.Player('player', {
         height: '100%',
         width: '100%',
         videoId: currentVideoId,
         events: {
+          'onReady': onPlayerReady,
           'onStateChange': onPlayerStateChange
         }
       });
+    };
+
+    function onPlayerReady(event) {
+      document.getElementById('enSub').textContent = "再生ボタンを押してください";
+      document.getElementById('jaSub').textContent = "Press play to start subtitles";
     }
 
     function onPlayerStateChange(event) {
@@ -129,7 +135,7 @@
         if (timeCheckInterval) clearInterval(timeCheckInterval);
         
         timeCheckInterval = setInterval(() => {
-          if (player && player.getCurrentTime) {
+          if (player && typeof player.getCurrentTime === 'function') {
             const currentTime = player.getCurrentTime();
             updateSubtitles(currentTime);
           }
@@ -143,10 +149,7 @@
       const enSubEl = document.getElementById('enSub');
       const jaSubEl = document.getElementById('jaSub');
 
-      // 現在再生中の動画IDに対応する字幕データリストを取得する
       const subtitlesData = subtitlesDatabase[currentVideoId] || [];
-
-      // そのリストの中から、現在の秒数にヒットするものを探す
       const currentSub = subtitlesData.find(sub => currentTime >= sub.start && currentTime <= sub.end);
 
       if (currentSub) {
@@ -158,7 +161,8 @@
       }
     }
 
-    function changeVideo() {
+    // グローバルに関数を公開してHTML側から確実に叩けるようにする
+    window.changeVideo = function() {
       const input = document.getElementById('urlInput').value.trim();
       let videoId = "";
 
@@ -178,18 +182,17 @@
       }
 
       if (videoId && videoId.length >= 10) {
-        currentVideoId = videoId; // 読み込む動画IDを更新
-        if (player && player.loadVideoById) {
+        currentVideoId = videoId;
+        if (player && typeof player.loadVideoById === 'function') {
           player.loadVideoById(videoId);
         }
         
-        // 字幕エリアを一旦リセット
         document.getElementById('enSub').textContent = "動画を切り替えました";
         document.getElementById('jaSub').textContent = "（再生すると字幕が同期します）";
       } else {
         alert("正しいYouTubeのURLまたは動画IDを入力してください。");
       }
-    }
+    };
   </script>
 </body>
 </html>
